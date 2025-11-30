@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TikTok Video Downloader</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #111;
+        color: #fff;
+        margin: 0;
+        padding: 20px;
+        text-align: center;
+    }
+    h1 { margin-bottom: 20px; }
+    input {
+        width: 90%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        margin-bottom: 20px;
+    }
+    button {
+        padding: 12px 20px;
+        background: #ff0050;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        color: #fff;
+        cursor: pointer;
+    }
+    button:hover { background: #ff3366; }
+    #preview {
+        margin-top: 20px;
+    }
+    video {
+        width: 90%;
+        border-radius: 10px;
+        margin-top: 15px;
+    }
+    a.download-btn {
+        display: block;
+        margin-top: 15px;
+        padding: 12px;
+        background: #00c853;
+        color: white;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 18px;
+    }
+</style>
+</head>
+<body>
+
+<h1>TikTok Video Downloader</h1>
+
+<input id="tiktokLink" placeholder="Paste TikTok link here..." />
+
+<button onclick="downloadVideo()">Download</button>
+
+<div id="preview"></div>
+
+<script>
+async function downloadVideo() {
+    const link = document.getElementById("tiktokLink").value.trim();
+    const preview = document.getElementById("preview");
+
+    if (!link) {
+        preview.innerHTML = "<p>Please paste a TikTok link!</p>";
+        return;
+    }
+
+    preview.innerHTML = "<p>Fetching video...</p>";
+
+    try {
+        const apiURL = 
+`https://betadash-api-swordslush-production.up.railway.app/api/tiktok?link=${encodeURIComponent(link)}`;
+
+        const res = await fetch(apiURL);
+        const data = await res.json();
+
+        console.log(data);
+
+        if (!data || !data.video || !data.video.no_watermark) {
+            preview.innerHTML = "<p>Failed to fetch video. Maybe link is invalid.</p>";
+            return;
+        }
+
+        const directURL = data.video.no_watermark;
+
+        preview.innerHTML = `
+            <video controls src="${directURL}"></video>
+            <a class="download-btn" href="${directURL}" download="tiktok.mp4">Download Video</a>
+        `;
+    } catch (err) {
+        preview.innerHTML = "<p>Error fetching video.</p>";
+        console.error(err);
+    }
+}
+</script>
+
+</body>
+</html>
