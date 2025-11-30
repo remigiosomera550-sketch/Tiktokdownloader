@@ -1,377 +1,79 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TikTok Video Downloader (Frontend)</title>
-  <style>
-    :root{
-      --bg:#0f172a; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
-    }
-    html,body{height:100%; margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
-    body{
-      display:flex; align-items:center; justify-content:center;
-      background: linear-gradient(180deg,#071025 0%, #071229 60%);
-      color:#e6eef6;
-      padding:32px;
-    }
-    .container{
-      width:100%; max-width:900px;
-      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-      border-radius:16px; padding:28px; box-shadow:0 8px 40px rgba(2,6,23,0.6);
-      border: 1px solid rgba(255,255,255,0.03);
-    }
-    h1{margin:0 0 8px 0; font-size:20px;}
-    p.lead{margin:0 0 18px 0; color:var(--muted); font-size:13px;}
-    .row{display:flex; gap:12px; align-items:center; margin-bottom:14px; flex-wrap:wrap;}
-    input[type="text"]{
-      flex:1; min-width:220px;
-      padding:12px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.04);
-      background:var(--card); color:inherit; outline:none; font-size:14px;
-    }
-    button{
-      padding:10px 14px; border-radius:10px; border:0; background:var(--accent);
-      color:#042026; font-weight:600; cursor:pointer;
-    }
-    button.secondary{
-      background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--muted);
-    }
-    .card{
-      margin-top:18px; padding:16px; border-radius:12px; background:var(--glass); display:flex; gap:16px;
-      align-items:flex-start;
-    }
-    .meta{flex:1;}
-    .thumb{width:220px; height:220px; border-radius:8px; background:#071122; display:flex; align-items:center; justify-content:center; overflow:hidden;}
-    .thumb img{width:100%; height:100%; object-fit:cover; display:block;}
-    video{max-width:100%; border-radius:8px; background:#000;}
-    .notice{color:var(--muted); font-size:13px; margin-top:8px;}
-    .error{color:#ffb4b4; margin-top:8px;}
-    .small{font-size:13px; color:var(--muted);}
-    .loader{display:inline-block; width:18px; height:18px; border-radius:50%; border:3px solid rgba(255,255,255,0.12); border-top-color:var(--accent); animation:spin 1s linear infinite; vertical-align:middle;}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .controls{display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap;}
-    a.download-btn{padding:10px 12px; border-radius:8px; text-decoration:none; background: #10b981; color:#012; font-weight:700;}
-    .muted-tag{font-size:12px; color:var(--muted); padding:6px 8px; border-radius:8px; background:rgba(255,255,255,0.02);}
-  </style>
-</head>
-<body>
-  <div class="container" role="main">
-    <h1>TikTok Video Downloader</h1>
-    <p class="lead">I-paste ang TikTok share link (o VT short link). Gagamitin ang provided API endpoint para kunin ang video. <span class="small muted-tag">Provided API: railway.app</span></p>
+// server.js
+// Node 18+ recommended (fetch builtin). If using older Node, install node-fetch.
+import express from 'express';
+import cors from 'cors';
 
-    <div class="row">
-      <input id="tiktokLink" type="text" placeholder="https://vt.tiktok.com/.... or https://www.tiktok.com/..." />
-      <button id="fetchBtn">Kunin Video</button>
-      <button id="exampleBtn" class="secondary">Gamitin Example</button>
-    </div>
+const app = express();
+app.use(cors()); // allow browser calls
+app.use(express.json());
 
-    <div id="status" class="small notice">Walang ginagawa.</div>
+const PORT = process.env.PORT || 3000;
+// replace this with the API base you have
+const EXTERNAL_BASE = 'https://betadash-api-swordslush-production.up.railway.app/api/tiktok?link=';
 
-    <div id="resultArea" style="display:none;" class="card" aria-live="polite">
-      <div class="thumb" id="thumbWrap">
-        <!-- thumbnail or placeholder -->
-        <img id="thumbnail" src="" alt="thumbnail" style="display:none" />
-        <div id="thumbPlaceholder" style="color:var(--muted); padding:8px; text-align:center;">
-          Preview
-        </div>
-      </div>
+function pickVideoUrl(data) {
+  // Try common shapes
+  if (!data) return null;
+  if (Array.isArray(data.downloadUrls)) {
+    for (const v of data.downloadUrls) if (v) return v;
+  }
+  if (typeof data.downloadUrl === 'string' && data.downloadUrl.startsWith('http')) return data.downloadUrl;
+  if (typeof data.videoUrl === 'string' && data.videoUrl.startsWith('http')) return data.videoUrl;
+  if (typeof data.url === 'string' && data.url.startsWith('http')) return data.url;
 
-      <div class="meta">
-        <div id="title" style="font-weight:700; margin-bottom:6px;">Video Preview</div>
-
-        <div id="videoWrap"></div>
-
-        <div class="controls">
-          <a id="downloadLink" class="download-btn" href="#" download style="display:none">Download</a>
-          <button id="openSource" class="secondary" style="display:none">Buksan Source</button>
-          <div id="metaText" class="small" style="margin-left:auto"></div>
-        </div>
-
-        <div id="error" class="error" style="display:none"></div>
-      </div>
-    </div>
-
-    <div style="margin-top:14px; font-size:13px; color:var(--muted)">
-      <strong>Tip:</strong> Kung makakita ng CORS error sa console o browser, gamitin ang simple local proxy o i-run sa server. (May instructions sa ibaba.)
-    </div>
-
-    <hr style="margin:18px 0; border-color:rgba(255,255,255,0.03)" />
-    <div style="font-size:13px; color:var(--muted)">
-      <strong>How it works:</strong> Frontend calls the API endpoint you gave and expects JSON or a redirect to a direct MP4 URL. The script will try to find the video URL and present a preview + download link.
-    </div>
-  </div>
-
-  <script>
-    // -------------------------
-    // CONFIG: base API endpoint
-    // -------------------------
-    // Provided by user:
-    const API_BASE = "https://betadash-api-swordslush-production.up.railway.app/api/tiktok?link=";
-
-    // -------------------------
-    // Helper DOM refs
-    // -------------------------
-    const input = document.getElementById('tiktokLink');
-    const fetchBtn = document.getElementById('fetchBtn');
-    const exampleBtn = document.getElementById('exampleBtn');
-    const status = document.getElementById('status');
-    const resultArea = document.getElementById('resultArea');
-    const thumbnail = document.getElementById('thumbnail');
-    const thumbPlaceholder = document.getElementById('thumbPlaceholder');
-    const videoWrap = document.getElementById('videoWrap');
-    const downloadLink = document.getElementById('downloadLink');
-    const openSource = document.getElementById('openSource');
-    const metaText = document.getElementById('metaText');
-    const errorBox = document.getElementById('error');
-
-    exampleBtn.addEventListener('click', () => {
-      input.value = "https://vt.tiktok.com/ZSfXs3h5p/"; // example from user
-    });
-
-    fetchBtn.addEventListener('click', async () => {
-      const link = input.value.trim();
-      if(!link){
-        setError("I-paste muna ang TikTok link.");
-        return;
-      }
-      clearError();
-      await fetchVideo(link);
-    });
-
-    function setStatus(text, busy=false){
-      status.innerHTML = busy ? '<span class="loader"></span> ' + text : text;
-    }
-    function setError(msg){
-      errorBox.style.display = 'block';
-      errorBox.textContent = msg;
-    }
-    function clearError(){
-      errorBox.style.display = 'none';
-      errorBox.textContent = '';
-    }
-
-    async function fetchVideo(tiktokLink){
-      try {
-        resultArea.style.display = 'none';
-        setStatus('Tinutawag ang API...', true);
-
-        // build API URL with encoded tiktok link
-        const apiUrl = API_BASE + encodeURIComponent(tiktokLink);
-
-        // call API
-        const resp = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json, text/plain, */*'
-          },
-          // mode: 'cors' // default
-        });
-
-        // handle non-OK
-        if(!resp.ok){
-          const text = await resp.text().catch(()=>"");
-          throw new Error(`API error: ${resp.status} ${resp.statusText}. ${text ? "Message: "+text : ""}`);
+  // nested search (shallow)
+  if (data.data && typeof data.data === 'object') {
+    const keys = Object.keys(data.data);
+    for (const k of keys) {
+      const val = data.data[k];
+      if (typeof val === 'string' && val.startsWith('http')) return val;
+      if (val && typeof val === 'object') {
+        for (const k2 of Object.keys(val)) {
+          const vv = val[k2];
+          if (typeof vv === 'string' && vv.startsWith('http')) return vv;
         }
-
-        // try to parse JSON first
-        const contentType = resp.headers.get('content-type') || '';
-        let json = null;
-        if(contentType.includes('application/json') || contentType.includes('text/json')){
-          json = await resp.json().catch(()=>null);
-        } else {
-          // If not JSON, we still try to parse text and see if it's JSON-ish
-          const txt = await resp.text().catch(()=>"");
-          try { json = JSON.parse(txt); } catch(e){ json = null; }
-        }
-
-        // If the response included a direct video stream (blob), handle it
-        if(!json && (contentType.startsWith('video/') || contentType.includes('mp4'))){
-          // response is a video blob
-          const blob = await resp.blob();
-          showVideoFromBlob(blob, tiktokLink);
-          setStatus('Video handa na.');
-          return;
-        }
-
-        // If JSON is present, try to find video URL(s)
-        if(json){
-          // common fields to check: video, play, url, download, result, data
-          const candidates = [];
-          const walker = (obj) => {
-            if(!obj) return;
-            if(typeof obj === 'string'){
-              if(obj.startsWith('http')) candidates.push(obj);
-            } else if(Array.isArray(obj)){
-              obj.forEach(walker);
-            } else if(typeof obj === 'object'){
-              for(const k of Object.keys(obj)){
-                const v = obj[k];
-                // push urls in string fields
-                if(typeof v === 'string' && v.startsWith('http')) candidates.push(v);
-                else walker(v);
-              }
-            }
-          };
-          walker(json);
-
-          // prefer mp4 links
-          const mp4 = candidates.find(u => u.toLowerCase().includes('.mp4')) || candidates[0];
-
-          if(!mp4){
-            // maybe the API returns an object with a "data" that includes a "video" object with playAddr
-            setStatus('Walang direct video URL nakita sa response.');
-            resultArea.style.display = 'block';
-            setError('API response walang video link. Tingnan console para sa buong response.');
-            console.log('Full API JSON response:', json);
-            return;
-          }
-
-          // Try to fetch the MP4 URL HEAD to get content-type (optional)
-          setStatus('Nakuha ang video URL, nagpe-prepare ng preview...', true);
-
-          // Show result and provide download link (use direct URL)
-          displayVideoUrl(mp4, json);
-          setStatus('Video handa na — pwede i-preview o i-download.');
-          return;
-        }
-
-        // fallback
-        setStatus('Hindi inaasahang sagot mula sa API.');
-        setError('Hindi maintindihan ang response mula sa API. Tingnan console para sa buong sagot.');
-        console.log('Non-json response, content-type:', contentType);
-      } catch (err) {
-        console.error(err);
-        setStatus('May error.');
-        setError(String(err.message || err));
-        resultArea.style.display = 'block';
       }
     }
+  }
+  return null;
+}
 
-    function displayVideoUrl(videoUrl, jsonMeta){
-      resultArea.style.display = 'flex';
-      // clear previous
-      videoWrap.innerHTML = '';
-      downloadLink.style.display = 'none';
-      openSource.style.display = 'none';
-      thumbnail.style.display = 'none';
-      thumbPlaceholder.style.display = 'block';
-      metaText.textContent = '';
+app.get('/api/tiktok', async (req, res) => {
+  const link = req.query.link;
+  if (!link) return res.status(400).json({ error: 'missing link query param' });
 
-      // create video element for preview (muted autoplay loop)
-      const v = document.createElement('video');
-      v.controls = true;
-      v.muted = false;
-      v.playsInline = true;
-      v.loop = false;
-      v.src = videoUrl;
-      v.style.maxWidth = '100%';
-      v.style.display = 'block';
-      v.preload = 'metadata';
-      videoWrap.appendChild(v);
+  const apiUrl = EXTERNAL_BASE + encodeURIComponent(link);
 
-      // show download link (direct)
-      downloadLink.href = videoUrl;
-      // attempt filename from meta or fallback
-      let filename = 'tiktok_video.mp4';
-      try {
-        if (jsonMeta && typeof jsonMeta === 'object') {
-          // check common fields
-          const nameGuess = (jsonMeta.title || jsonMeta.desc || jsonMeta.description || jsonMeta.filename);
-          if (nameGuess) {
-            filename = sanitizeFilename(String(nameGuess)) + '.mp4';
-          } else {
-            // derive from url
-            const urlParts = videoUrl.split('?')[0].split('/');
-            const last = urlParts[urlParts.length-1];
-            if(last && last.includes('.mp4')) filename = last.split('.mp4')[0] + '.mp4';
-          }
-        }
-      } catch(e){}
-      downloadLink.setAttribute('download', filename);
-      downloadLink.style.display = 'inline-block';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
 
-      // open source button
-      openSource.style.display = 'inline-block';
-      openSource.onclick = ()=> window.open(videoUrl, '_blank');
+    const response = await fetch(apiUrl, { signal: controller.signal });
+    clearTimeout(timeout);
 
-      // try to show thumbnail if present in JSON
-      let thumb = null;
-      if(jsonMeta){
-        // common keys
-        const possibleKeys = ['thumbnail','thumb','cover','covers','coverImg','image','poster','authorThumb','avatar'];
-        for(const k of possibleKeys){
-          if(jsonMeta[k] && typeof jsonMeta[k] === 'string' && jsonMeta[k].startsWith('http')){
-            thumb = jsonMeta[k]; break;
-          }
-        }
-        // special: if jsonMeta has data->author->avatar or data->video->cover etc
-        try {
-          if(!thumb){
-            if(jsonMeta.data && jsonMeta.data.video && jsonMeta.data.video.cover) thumb = jsonMeta.data.video.cover;
-            else if(jsonMeta.data && jsonMeta.data.cover) thumb = jsonMeta.data.cover;
-            else if(jsonMeta.data && jsonMeta.data.author && jsonMeta.data.author.avatar) thumb = jsonMeta.data.author.avatar;
-          }
-        } catch(e){}
-      }
-
-      if(thumb){
-        thumbnail.src = thumb;
-        thumbnail.style.display = 'block';
-        thumbPlaceholder.style.display = 'none';
-      } else {
-        thumbnail.style.display = 'none';
-        thumbPlaceholder.style.display = 'block';
-      }
-
-      // meta text
-      const metaParts = [];
-      if(jsonMeta && jsonMeta.author) metaParts.push('Author: ' + jsonMeta.author);
-      if(jsonMeta && jsonMeta.title) metaParts.push('Title: ' + jsonMeta.title);
-      if(jsonMeta && jsonMeta.duration) metaParts.push('Duration: ' + jsonMeta.duration + 's');
-      metaText.textContent = metaParts.join(' • ');
-
-      // show the full JSON in console for debugging
-      console.log('API meta (parsed):', jsonMeta);
+    if (!response.ok) {
+      const txt = await response.text().catch(()=>null);
+      return res.status(502).json({ error: 'external API error', status: response.status, body: txt });
     }
 
-    function sanitizeFilename(name){
-      return name.replace(/[<>:"\/\\|?*\x00-\x1F]/g, '').slice(0,120).trim() || 'tiktok_video';
+    const data = await response.json().catch(()=>null);
+    if (!data) return res.status(502).json({ error: 'invalid JSON from extractor' });
+
+    const videoUrl = pickVideoUrl(data);
+
+    // if found, return a small JSON with direct URL
+    if (videoUrl) {
+      return res.json({ success: true, videoUrl, title: data.title || null, raw: data });
     }
 
-    function showVideoFromBlob(blob, origLink){
-      resultArea.style.display = 'flex';
-      videoWrap.innerHTML = '';
-      const url = URL.createObjectURL(blob);
-      const v = document.createElement('video');
-      v.controls = true; v.playsInline = true; v.src = url; v.preload='metadata';
-      videoWrap.appendChild(v);
+    // not found: return raw for debugging
+    return res.json({ success: false, reason: 'no direct url found', raw: data });
 
-      downloadLink.href = url;
-      downloadLink.setAttribute('download','tiktok_video.mp4');
-      downloadLink.style.display = 'inline-block';
-      openSource.style.display = 'inline-block';
-      openSource.onclick = ()=> window.open(url, '_blank');
-      thumbPlaceholder.style.display = 'block';
-      thumbnail.style.display = 'none';
-      metaText.textContent = 'From blob response';
-    }
+  } catch (err) {
+    console.error('fetch error', err?.message || err);
+    if (err.name === 'AbortError') return res.status(504).json({ error: 'timeout' });
+    return res.status(500).json({ error: err.message || String(err) });
+  }
+});
 
-    // -------------------------
-    // CORS / Proxy tip (showing as comment)
-    // -------------------------
-    // If you get "CORS" blocked in the browser console: either
-    // 1) Run a tiny local proxy (example: using Node/express or `http-server` + simple CORS proxy), OR
-    // 2) Use the `cors-anywhere` style server you control, or
-    // 3) Host this frontend on the same origin where the API is allowed.
-    //
-    // Simple dev test (no CORS guarantee):
-    // - Run: python -m http.server 8000
-    // - Open: http://localhost:8000/tiktok-downloader.html
-    //
-    // If the API does not set CORS, you will need a proxy. Example (node):
-    // const express = require('express'), fetch = require('node-fetch');
-    // app.get('/proxy', async (req,res)=>{ const r = await fetch(actualApiUrl); const txt = await r.text(); res.set('Content-Type', r.headers.get('content-type')||'text/plain'); res.send(txt); });
-
-  </script>
-</body>
-</html>
+app.listen(PORT, ()=> console.log(`tiktok-proxy running on http://localhost:${PORT}`));
